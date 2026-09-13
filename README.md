@@ -20,7 +20,12 @@ writes is its own config and log folder.
   attribute the character carries.
 - **Remote kick** through the game's own kick function, persistent until the server
   restarts, exactly like an in-game kick.
-- **Broadcast** to all players through the game's own broadcast function.
+- **Broadcast** to all players through the game's own chat.
+- **Give items** through the game's own give function.
+- **Bans** that survive restarts, with offline players bannable by SteamID64.
+- **In-game admin commands** - `/kick`, `/ban`, `/unban`, `/give`, gated by the game's
+  own owner and admin list.
+- **Discord relay** - in-game chat and player deaths posted to a webhook.
 - **Two independent listeners** - REST and Source RCON, each switchable on its own.
 - **Access control on both** - bearer token or RCON password, IP whitelisting, per-address
   rate limiting and automatic blocking after repeated failed logins.
@@ -94,7 +99,17 @@ MaxFailedAuth=5
 FailWindowSeconds=60
 BanSeconds=300
 MaxConnections=16
+
+[Discord]
+Enabled=false
+WebhookUrl=
+Username=Dragonwilds
 ```
+
+Set `Enabled=true` and paste a webhook URL to relay in-game chat and player deaths to a
+Discord channel.
+
+Bans are kept in `rsdwapi/bans.json` beside the config and survive restarts.
 
 `IPWhitelist` takes a comma separated list of addresses and CIDR blocks
 (`127.0.0.1,10.0.0.0/8`). Empty allows everyone. It applies to both listeners
@@ -121,13 +136,18 @@ Every request needs `Authorization: Bearer <token>` unless `BearerToken` is empt
 | GET | `/api/players` | Every connected player |
 | POST | `/api/kick` | Disconnect a player |
 | POST | `/api/broadcast` | Send a message to every player |
+| POST | `/api/give` | Give an item to a player |
+| GET | `/api/items` | List loaded items, `?search=` to filter |
+| POST | `/api/ban` | Ban a player |
+| POST | `/api/unban` | Remove a ban |
+| GET | `/api/bans` | List bans |
 
 ### GET /api/players
 
 Accepts `?name=`, `?characterName=`, `?netId=` and `?characterGuid=` to narrow the list.
 
 ```bash
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/players
+curl -H "Authorization: Bearer TOKEN" http://localhost:8080/api/players
 ```
 
 ```json
@@ -171,17 +191,8 @@ Health and max health come from the character's attributes component, not from
 `player` accepts a SteamID64, player id, character GUID, character name or display name.
 They are matched in that order, most stable first.
 
-```bash
-curl -X POST http://localhost:8080/api/kick \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"player":"76561190000000000","reason":"Kicked by an administrator"}'
 ```
-
-From Windows `cmd.exe`, escape the quotes instead:
-
-```
-curl -X POST http://localhost:8080/api/kick -H "Authorization: Bearer %TOKEN%" -H "Content-Type: application/json" -d "{\"player\":\"76561190000000000\",\"reason\":\"Kicked by an administrator\"}"
+curl -X POST http://localhost:8080/api/kick -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d "{\"player\":\"76561190000000000\",\"reason\":\"Kicked by an administrator\"}"
 ```
 
 A kick holds until the server restarts. The kicked player is remembered and removed again
@@ -191,17 +202,8 @@ if they reconnect.
 
 Sends a line to every connected player's chat box.
 
-```bash
-curl -X POST http://localhost:8080/api/broadcast \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"message":"Restarting in 5 minutes"}'
 ```
-
-From Windows `cmd.exe`:
-
-```
-curl -X POST http://localhost:8080/api/broadcast -H "Authorization: Bearer %TOKEN%" -H "Content-Type: application/json" -d "{\"message\":\"Restarting in 5 minutes\"}"
+curl -X POST http://localhost:8080/api/broadcast -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d "{\"message\":\"Restarting in 5 minutes\"}"
 ```
 
 `sender` is optional and defaults to `Server`, giving `[Server] Restarting in 5 minutes`.
@@ -209,6 +211,26 @@ curl -X POST http://localhost:8080/api/broadcast -H "Authorization: Bearer %TOKE
 The game has no server identity in chat, so a broadcast is delivered under the receiving
 player's own name. Everyone sees the `[Server]` prefix, but it appears as though they sent
 it themselves.
+
+### POST /api/give
+
+```
+curl -X POST http://localhost:8080/api/give -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d "{\"player\":\"76561190000000000\",\"item\":\"IronBar\",\"count\":10}"
+```
+
+`item` matches the full asset name (`ITEM_Resources_IronBar`), the name without the `ITEM_`
+prefix, or a unique partial like `ironbar`. Only items currently loaded on the server can be
+given; `GET /api/items` shows what is available right now. `count` defaults to 1.
+
+### POST /api/ban
+
+```
+curl -X POST http://localhost:8080/api/ban -H "Authorization: Bearer TOKEN" -H "Content-Type: application/json" -d "{\"player\":\"76561190000000000\",\"reason\":\"Griefing\"}"
+```
+
+Kicks the player if online and adds them to `bans.json`. They are removed again whenever
+they reconnect. Offline players can be banned by SteamID64. `POST /api/unban` takes the
+same `player` field.
 
 ### GET /api/health
 
@@ -228,7 +250,7 @@ Standard Valve Source RCON, so `mcrcon`, `rcon-cli` and panel consoles all work.
 default.
 
 ```bash
-mcrcon -H 127.0.0.1 -P 27020 -p "$RCON_PASSWORD" players
+mcrcon -H 127.0.0.1 -P 27020 -p PASSWORD players
 ```
 
 | Command | Description |
@@ -241,6 +263,33 @@ mcrcon -H 127.0.0.1 -P 27020 -p "$RCON_PASSWORD" players
 | `player <name>` | Everything known about one player, as JSON |
 | `kick <player> [reason]` | Disconnect a player |
 | `broadcast <message>` | Send a message to every player |
+| `give <player> <item> [count]` | Give an item to a player |
+| `items [search]` | List loaded items |
+| `ban <player> [reason]` | Ban a player, offline players by SteamID64 |
+| `unban <player or SteamID64>` | Remove a ban |
+| `bans` | List bans |
+
+## In-game commands
+
+Admins can run these from chat. Admin status comes from the game's own owner and admin
+list, so anyone who has entered the admin password in the Server Management screen
+qualifies. Replies go only to the sender, and the command line itself is never shown to
+other players.
+
+| Command | Description |
+|---------|-------------|
+| `/kick <player> [reason]` | Disconnect a player |
+| `/ban <player> [reason]` | Ban a player |
+| `/unban <player or SteamID64>` | Remove a ban |
+| `/give <player> <item> [count]` | Give an item to a player |
+| `/help` | List commands |
+
+## Discord
+
+With `[Discord]` enabled, every chat message is relayed to the webhook as
+`**Name**: message`, and player deaths are posted as `:skull: **Name** died at x, y, z`.
+Messages are batched and sent at most once per second, so a busy server stays inside
+Discord's rate limits.
 
 Rate limiting is a per-address token bucket: `CommandsPerMinute` is the sustained rate,
 `CommandBurst` is how much can be spent at once. Separately, `MaxFailedAuth` failed logins

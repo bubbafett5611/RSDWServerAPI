@@ -1,9 +1,12 @@
 #include "api_routes.h"
 #include "serialize.h"
+#include "../engine/bans.h"
 #include "../engine/chat.h"
+#include "../engine/items.h"
 #include "../utils/json.h"
 
 #include <algorithm>
+#include <sstream>
 
 namespace ApiRoutes {
 
@@ -76,6 +79,87 @@ void RegisterPlayers(HttpServer& server) {
         std::string error;
         if (!DomChat::Broadcast(line, error)) return Error(500, error);
         return Ok("broadcast sent");
+    });
+
+    server.Post("/api/give", [](const HttpRequest& req) -> HttpResponse {
+        if (!EngineReady()) return EngineUnavailable();
+
+        std::string player, item;
+        if (!Json::GetString(req.body, "player", player) || player.empty()) {
+            return Error(400, "player required");
+        }
+        if (!Json::GetString(req.body, "item", item) || item.empty()) {
+            return Error(400, "item required");
+        }
+        int count = 1;
+        Json::GetInt(req.body, "count", count);
+
+        std::string message;
+        if (!DomItems::GiveItem(player, item, count, message)) return Error(500, message);
+        return Ok(message);
+    });
+
+    server.Get("/api/items", [](const HttpRequest& req) -> HttpResponse {
+        if (!EngineReady()) return EngineUnavailable();
+
+        std::string filter;
+        auto it = req.query.find("search");
+        if (it != req.query.end()) filter = Lower(it->second);
+
+        std::ostringstream oss;
+        oss << "{\"items\":[";
+        bool first = true;
+        for (const DomItems::ItemInfo& item : DomItems::ListLoaded()) {
+            if (!filter.empty() && Lower(item.name).find(filter) == std::string::npos) continue;
+            if (!first) oss << ",";
+            first = false;
+            oss << "{\"name\":\"" << Json::Escape(item.name) << "\",\"maxStackSize\":"
+                << item.maxStackSize << "}";
+        }
+        oss << "]}";
+        return JsonResponse(oss.str());
+    });
+
+    server.Post("/api/ban", [](const HttpRequest& req) -> HttpResponse {
+        if (!EngineReady()) return EngineUnavailable();
+
+        std::string player;
+        if (!Json::GetString(req.body, "player", player) || player.empty()) {
+            return Error(400, "player required (name, netId or SteamID64 for offline players)");
+        }
+        std::string reason = "Banned by an administrator";
+        Json::GetString(req.body, "reason", reason);
+
+        std::string message;
+        if (!DomBans::Ban(player, reason, message)) return Error(500, message);
+        return Ok(message);
+    });
+
+    server.Post("/api/unban", [](const HttpRequest& req) -> HttpResponse {
+        std::string player;
+        if (!Json::GetString(req.body, "player", player) || player.empty()) {
+            return Error(400, "player required (name or SteamID64)");
+        }
+
+        std::string message;
+        if (!DomBans::Unban(player, message)) return Error(404, message);
+        return Ok(message);
+    });
+
+    server.Get("/api/bans", [](const HttpRequest&) -> HttpResponse {
+        std::ostringstream oss;
+        oss << "{\"bans\":[";
+        bool first = true;
+        for (const DomBans::BanEntry& ban : DomBans::All()) {
+            if (!first) oss << ",";
+            first = false;
+            oss << "{\"netId\":\"" << Json::Escape(ban.netId)
+                << "\",\"name\":\"" << Json::Escape(ban.name)
+                << "\",\"reason\":\"" << Json::Escape(ban.reason)
+                << "\",\"bannedAt\":\"" << Json::Escape(ban.bannedAt) << "\"}";
+        }
+        oss << "]}";
+        return JsonResponse(oss.str());
     });
 }
 

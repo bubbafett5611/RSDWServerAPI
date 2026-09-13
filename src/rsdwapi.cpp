@@ -1,6 +1,7 @@
 #include "api/api_routes.h"
 #include "config/config.h"
 #include "discord/webhook.h"
+#include "engine/bans.h"
 #include "engine/chat.h"
 #include "engine/dom_engine.h"
 #include "engine/native_call.h"
@@ -15,6 +16,8 @@
 #include <atomic>
 #include <cstdlib>
 #include <chrono>
+#include <cstdio>
+#include <map>
 #include <thread>
 
 APIConfig g_Config;
@@ -131,12 +134,37 @@ void InitThread() {
             }
         }
 
+        DomBans::Load();
+
+        std::map<std::string, bool> wasDead;
+
         while (!g_Shutdown) {
             for (int i = 0; i < 20 && !g_Shutdown; i++) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             if (g_Shutdown) break;
+
             DomEngine::g_Engine->EnforceKicks();
+            DomBans::Enforce();
+
+            std::map<std::string, bool> nowDead;
+            for (const DomEngine::PlayerInfo& player : DomEngine::g_Engine->GetAllPlayers()) {
+                if (player.uniqueNetId.empty() || !player.hasHealth) continue;
+                nowDead[player.uniqueNetId] = player.isDead;
+
+                auto previous = wasDead.find(player.uniqueNetId);
+                bool justDied = player.isDead && previous != wasDead.end() && !previous->second;
+                if (!justDied) continue;
+
+                std::string name = player.characterName.empty() ? player.name : player.characterName;
+                char where[96];
+                snprintf(where, sizeof(where), "%.0f, %.0f, %.0f", player.x, player.y, player.z);
+                LogMessage("Deaths: " + name + " died at " + where);
+                if (Discord::IsEnabled()) {
+                    Discord::Post(":skull: **" + name + "** died at `" + where + "`");
+                }
+            }
+            wasDead.swap(nowDead);
         }
     }
 }

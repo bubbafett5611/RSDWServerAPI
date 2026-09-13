@@ -10,6 +10,7 @@ bool Initialize(uintptr_t moduleBase, uintptr_t moduleEnd);
 bool InstallExecPump();
 
 bool IsReady();
+bool IsGameThread();
 
 bool HasProcessEvent();
 

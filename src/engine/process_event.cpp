@@ -10,6 +10,7 @@
 #include <elf.h>
 #include <link.h>
 #include <mutex>
+#include <pthread.h>
 #include <cstdio>
 #include <cstdlib>
 #include <chrono>
@@ -344,7 +345,14 @@ void DeriveProcessEvent() {
                "replicated calls stay disabled");
 }
 
+pthread_t g_GameThread = 0;
+bool g_GameThreadKnown = false;
+
 void PumpThunk(void* context, void* frame, void* result) {
+    if (!g_GameThreadKnown) {
+        g_GameThread = pthread_self();
+        g_GameThreadKnown = true;
+    }
     DeriveProcessEvent();
     LearnFrameLayout(frame, context);
 
@@ -490,8 +498,20 @@ void CallFunction(uintptr_t object, uintptr_t function, void* params) {
     g_Original((void*)object, (void*)function, params);
 }
 
+bool IsGameThread() {
+    return g_GameThreadKnown && pthread_equal(pthread_self(), g_GameThread);
+}
+
 bool RunSync(const std::function<void()>& work, int timeoutMs) {
     if (!g_Ready) return false;
+
+    if (IsGameThread()) {
+        try {
+            work();
+        } catch (...) {
+        }
+        return true;
+    }
 
     Job job;
     job.work = &work;

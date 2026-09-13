@@ -1,6 +1,8 @@
 #include "rcon_commands.h"
 #include "../api/serialize.h"
+#include "../engine/bans.h"
 #include "../engine/chat.h"
+#include "../engine/items.h"
 #include "../engine/dom_engine.h"
 
 #include <algorithm>
@@ -89,6 +91,61 @@ void RegisterPlayerCommands() {
                       return "Broadcast failed: " + error;
                   }
                   return "Broadcast sent.";
+              }});
+
+    Register({"give", "give <player> <item> [count]", "Give an item to a player.",
+              [](const std::vector<std::string>& args) -> std::string {
+                  if (!EngineReady()) return "Engine not initialized yet.";
+                  if (args.size() < 2) return "Usage: give <player> <item> [count]";
+                  int count = args.size() > 2 ? atoi(args[2].c_str()) : 1;
+                  std::string message;
+                  DomItems::GiveItem(args[0], args[1], count, message);
+                  return message;
+              }});
+
+    Register({"items", "items [search]", "List loaded items.",
+              [](const std::vector<std::string>& args) -> std::string {
+                  if (!EngineReady()) return "Engine not initialized yet.";
+                  std::string filter = args.empty() ? "" : Lower(args[0]);
+                  std::string out;
+                  int shown = 0;
+                  for (const DomItems::ItemInfo& item : DomItems::ListLoaded()) {
+                      if (!filter.empty() && Lower(item.name).find(filter) == std::string::npos) continue;
+                      out += item.name + "\n";
+                      shown++;
+                  }
+                  return out + std::to_string(shown) + " item(s).";
+              }});
+
+    Register({"ban", "ban <player> [reason]", "Ban a player. Offline players by SteamID64.",
+              [](const std::vector<std::string>& args) -> std::string {
+                  if (!EngineReady()) return "Engine not initialized yet.";
+                  if (args.empty()) return "Usage: ban <player> [reason]";
+                  std::string reason = "Banned by an administrator";
+                  if (args.size() > 1) {
+                      reason = args[1];
+                      for (size_t i = 2; i < args.size(); i++) reason += " " + args[i];
+                  }
+                  std::string message;
+                  DomBans::Ban(args[0], reason, message);
+                  return message;
+              }});
+
+    Register({"unban", "unban <player or SteamID64>", "Remove a ban.",
+              [](const std::vector<std::string>& args) -> std::string {
+                  if (args.empty()) return "Usage: unban <player or SteamID64>";
+                  std::string message;
+                  DomBans::Unban(args[0], message);
+                  return message;
+              }});
+
+    Register({"bans", "bans", "List bans.",
+              [](const std::vector<std::string>&) -> std::string {
+                  std::string out;
+                  for (const DomBans::BanEntry& ban : DomBans::All()) {
+                      out += ban.netId + "  " + ban.name + "  " + ban.reason + "  " + ban.bannedAt + "\n";
+                  }
+                  return out.empty() ? "No bans." : out;
               }});
 }
 

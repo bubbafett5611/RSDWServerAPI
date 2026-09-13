@@ -1,5 +1,5 @@
 set_project("rsdw-serverapi")
-set_version("0.1.1")
+set_version("0.1.2")
 
 add_rules("mode.release")
 set_languages("c++17")
@@ -19,6 +19,8 @@ target("rsdwapi")
               "src/engine/players.cpp",
               "src/engine/kick.cpp",
               "src/engine/chat.cpp",
+              "src/engine/items.cpp",
+              "src/engine/bans.cpp",
               "src/discord/webhook.cpp",
               "src/engine/native_call.cpp",
               "src/engine/process_event.cpp",
