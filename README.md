@@ -1,17 +1,13 @@
 # RSDWServerAPI
 
+> [!CAUTION]  
+> Holding off on updates until patch 1.0 drops. This will determine the path this project takes.
+
 A server management API for **RuneScape: Dragonwilds** dedicated servers on Linux.
 
 It adds a REST API and a Source RCON listener to a running server, so you can see who is
 connected, read their live stats, and kick them remotely - from a panel, a script, a
 Discord bot, or anything else that speaks HTTP.
-
-The mod loads alongside the server with `LD_PRELOAD`. Game files are left untouched: no
-paks are repacked and no assets are replaced. It reads state straight out of the running
-process and calls the game's own functions when it needs to act, and the only thing it
-writes is its own config and log folder.
-
-**Target:** `RSDragonwildsServer-Linux-Shipping` (Steam app `4019830`).
 
 ## Features
 
