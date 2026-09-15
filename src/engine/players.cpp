@@ -51,6 +51,11 @@ void Engine::ReadAttributeArrays(uintptr_t attributesComponent, uintptr_t attrib
         AttributeInfo info;
         info.name = GetObjectClassName(attribute);
         if (info.name.empty()) continue;
+        const std::string suffix = "Attribute";
+        if (info.name.size() > suffix.size() &&
+            info.name.compare(info.name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+            info.name.erase(info.name.size() - suffix.size());
+        }
         info.value = ((float*)values.Data)[i];
         info.baseValue = Mem::ReadFloat(attribute + Offsets::FloatAttribute_BaseValue);
         info.shared = shared;
@@ -62,13 +67,13 @@ void Engine::ReadHealthAndAttributes(PlayerInfo& info) const {
     if (!IsA(info.pawnPtr, "DominionPlayerCharacter")) return;
 
     uintptr_t health = Mem::ReadPtr(info.pawnPtr + Offsets::DomPlayerChar_HealthComponent);
-    if (!health || !Mem::Readable((void*)health, 0x300)) return;
+    if (!health || !Mem::Readable((void*)health, 0x1B8)) return;
 
     info.canDie = Mem::ReadU8(health + Offsets::Health_bCanDie) != 0;
 
     uintptr_t attributesComponent =
-        Mem::ReadPtr(health + Offsets::HealthFromAttr_AttributesComponent);
-    if (!attributesComponent || !Mem::Readable((void*)attributesComponent, 0x170)) return;
+        Mem::ReadPtr(info.pawnPtr + Offsets::DomPlayerChar_AttributesComponent);
+    if (!attributesComponent || !Mem::Readable((void*)attributesComponent, 0x1B8)) return;
 
     ReadAttributeArrays(attributesComponent, Offsets::Attributes_FloatAttributes,
                         Offsets::Attributes_AttributeValues, false, info.attributes);

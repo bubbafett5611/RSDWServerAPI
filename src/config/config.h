@@ -58,6 +58,7 @@ struct RconConfig {
 struct DiscordConfig {
     bool enabled = false;
     std::string webhookUrl;
+    std::string deathWebhookUrl;
     std::string username = "Dragonwilds";
 };
 
@@ -150,9 +151,11 @@ struct APIConfig {
         file << "MaxConnections=" << rcon.maxConnections << "\n\n";
 
         file << "[Discord]\n";
-        file << "# Relays in-game chat to a Discord webhook. Off by default.\n";
+        file << "# Relays in-game chat and player deaths to Discord webhooks. Off by default.\n";
+        file << "# DeathWebhookUrl falls back to WebhookUrl when empty.\n";
         file << "Enabled=" << Bool(discord.enabled) << "\n";
         file << "WebhookUrl=" << discord.webhookUrl << "\n";
+        file << "DeathWebhookUrl=" << discord.deathWebhookUrl << "\n";
         file << "Username=" << discord.username << "\n";
     }
 
@@ -215,6 +218,7 @@ private:
         if (section == "Discord") {
             if (key == "Enabled") discord.enabled = ParseBool(value);
             else if (key == "WebhookUrl") discord.webhookUrl = value;
+            else if (key == "DeathWebhookUrl") discord.deathWebhookUrl = value;
             else if (key == "Username") discord.username = value;
             return;
         }

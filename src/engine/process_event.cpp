@@ -21,8 +21,6 @@ namespace GameThread {
 
 namespace {
 
-typedef void (*ProcessEventFn)(void* self, void* function, void* params);
-
 ProcessEventFn g_Original = nullptr;
 uintptr_t g_ProcessEvent = 0;
 int g_VTableIndex = -1;
@@ -335,6 +333,7 @@ void DeriveProcessEvent() {
 
         g_ProcessEvent = candidate;
         g_Original = (ProcessEventFn)candidate;
+        g_VTableIndex = index;
         LogMessage("GameThread: ProcessEvent derived at " + HexString(candidate) +
                    " (vtable slot " + std::to_string(index) + ", from stack return address " +
                    HexString(value) + ")");
@@ -496,6 +495,32 @@ bool Initialize(uintptr_t moduleBase, uintptr_t moduleEnd) {
 void CallFunction(uintptr_t object, uintptr_t function, void* params) {
     if (!g_Original || !object || !function) return;
     g_Original((void*)object, (void*)function, params);
+}
+
+int VTableIndex() { return g_VTableIndex; }
+
+bool HookVTable(uintptr_t object, ProcessEventFn hook, ProcessEventFn& outPrevious) {
+    if (g_VTableIndex < 0 || !object || !Mem::Readable((void*)object, sizeof(uintptr_t))) return false;
+
+    uintptr_t vtable = Mem::ReadPtr(object);
+    if (!vtable || !Mem::InImage((void*)vtable)) return false;
+
+    uintptr_t slotAddress = vtable + (uintptr_t)g_VTableIndex * sizeof(uintptr_t);
+    uintptr_t previous = Mem::ReadPtr(slotAddress);
+    if (!previous) return false;
+    if (previous == (uintptr_t)hook) {
+        outPrevious = nullptr;
+        return true;
+    }
+
+    long pageSize = sysconf(_SC_PAGESIZE);
+    uintptr_t page = slotAddress & ~(uintptr_t)(pageSize - 1);
+    if (mprotect((void*)page, (size_t)pageSize * 2, PROT_READ | PROT_WRITE) != 0) return false;
+    *(uintptr_t*)slotAddress = (uintptr_t)hook;
+    mprotect((void*)page, (size_t)pageSize * 2, PROT_READ);
+
+    outPrevious = (ProcessEventFn)previous;
+    return true;
 }
 
 bool IsGameThread() {

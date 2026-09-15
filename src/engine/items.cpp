@@ -14,7 +14,7 @@ namespace {
 
 using namespace DomEngine;
 
-// UItemData::MaxStackSize - Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp:4510
+// UItemData::MaxStackSize - Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp:4748
 constexpr uintptr_t kMaxStackSize = 0x124;
 
 // DominionRuntimeBlueprintLibrary_TryGiveItemToPlayer - Source: Assertions.inl

@@ -24,9 +24,9 @@ namespace DomEngine {
 namespace Offsets {
 
 // Image offsets - Source: RSDWSDK/Dumpspace/OffsetsInfo.json
-constexpr uintptr_t GObjects = 0x0DA3D210;
-constexpr uintptr_t GNames   = 0x0D981CF8;
-constexpr uintptr_t GWorld   = 0x0DB61318;
+constexpr uintptr_t GObjects = 0x0DC2E4D0;
+constexpr uintptr_t GNames   = 0x0DB72FB8;
+constexpr uintptr_t GWorld   = 0x0DD525F8;
 
 // TUObjectArray / FUObjectItem - Source: RSDWSDK/CppSDK/SDK/Basic.hpp
 constexpr uintptr_t ObjArray_Objects     = 0x00;
@@ -64,21 +64,21 @@ constexpr uintptr_t GameStateBase_AuthorityGameMode = 0x2C8;
 constexpr uintptr_t GameStateBase_PlayerArray       = 0x2D8;
 
 // ADominionGameStateBase - Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp
-constexpr uintptr_t DomGameState_bIsDedicatedServer  = 0x314;
-constexpr uintptr_t DomGameState_bIsCrossplayEnabled = 0x315;
-constexpr uintptr_t DomGameState_KickedUsers         = 0x348;
-constexpr uintptr_t DomGameState_BannedUsers         = 0x358;
-constexpr uintptr_t DomGameState_DisplayNameComponent = 0x398;
-constexpr uintptr_t DomGameState_WorldHardcoreState  = 0x3D0;
+constexpr uintptr_t DomGameState_bIsDedicatedServer  = 0x320;
+constexpr uintptr_t DomGameState_bIsCrossplayEnabled = 0x321;
+constexpr uintptr_t DomGameState_KickedUsers         = 0x358;
+constexpr uintptr_t DomGameState_BannedUsers         = 0x368;
+constexpr uintptr_t DomGameState_DisplayNameComponent = 0x3E8;
+constexpr uintptr_t DomGameState_WorldHardcoreState  = 0x420;
 
 // UDisplayNameComponent - Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp
-constexpr uintptr_t DisplayName_OriginalCharacterNames = 0xD8;
+constexpr uintptr_t DisplayName_OriginalCharacterNames = 0xE0;
 
 // FDomCharacterDisplayName - Source: RSDWSDK/CppSDK/SDK/Dominion_structs.hpp
-constexpr uintptr_t CharDisplayName_UniqueID      = 0x00; // FUniqueNetIdRepl
-constexpr uintptr_t CharDisplayName_CharacterGuid = 0x30; // FGuid
-constexpr uintptr_t CharDisplayName_CharacterName = 0x40; // FString
-constexpr uintptr_t CharDisplayName_Size          = 0x50;
+constexpr uintptr_t CharDisplayName_OwnerGuid     = 0x00; // FDomOwnerGuid
+constexpr uintptr_t CharDisplayName_CharacterGuid = 0x98; // FDomCharacterGuid -> FGuid
+constexpr uintptr_t CharDisplayName_CharacterName = 0xA8; // FString
+constexpr uintptr_t CharDisplayName_Size          = 0xB8;
 
 // APlayerState - Source: RSDWSDK/CppSDK/SDK/Engine_classes.hpp
 constexpr uintptr_t PlayerState_Score          = 0x2C0;
@@ -91,9 +91,12 @@ constexpr uintptr_t PlayerState_PawnPrivate    = 0x338;
 constexpr uintptr_t PlayerState_PlayerName     = 0x350;
 
 // ADominionPlayerState - Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp
-constexpr uintptr_t DomPlayerState_CharacterGuid = 0x3D0; // FDomCharacterGuid -> FGuid
-constexpr uintptr_t DomPlayerState_PlayerColor   = 0x3E0; // FPlayerColor
-constexpr uintptr_t DomPlayerState_PlatformData  = 0x408; // FDomPlatformData
+constexpr uintptr_t DomPlayerState_OwnerGuid     = 0x3D0; // FDomOwnerGuid
+constexpr uintptr_t DomPlayerState_CharacterGuid = 0x3D0; // FDomOwnerGuid::CharacterGuid -> FGuid
+constexpr uintptr_t DomPlayerState_NetIdPrimary   = 0x3F8; // FDomOwnerGuid::AccountGuid::NetIdPrimary
+constexpr uintptr_t DomPlayerState_NetIdSecondary = 0x428; // FDomOwnerGuid::AccountGuid::NetIdSecondary
+constexpr uintptr_t DomPlayerState_PlayerColor   = 0x458; // FPlayerColor
+constexpr uintptr_t DomPlayerState_PlatformData  = 0x480; // FDomPlatformData
 
 // FPlayerColor - Source: RSDWSDK/CppSDK/SDK/Dominion_structs.hpp
 constexpr uintptr_t PlayerColor_Color     = 0x00; // FLinearColor, 4 floats
@@ -101,7 +104,8 @@ constexpr uintptr_t PlayerColor_HexString = 0x10; // FString
 
 // FDomPlatformData - Source: RSDWSDK/CppSDK/SDK/Dominion_structs.hpp
 constexpr uintptr_t PlatformData_UniqueID     = 0x00; // FUniqueNetIdRepl, 0x30
-constexpr uintptr_t PlatformData_PlatformName = 0x30; // FString
+constexpr uintptr_t PlatformData_DisplayName  = 0x30; // FString
+constexpr uintptr_t PlatformData_PlatformName = 0x40; // FString
 
 constexpr uintptr_t NetIdRepl_SharedPtrA  = 0x00;
 constexpr uintptr_t NetIdRepl_SharedPtrB  = 0x08;
@@ -127,11 +131,9 @@ constexpr uintptr_t MovementComp_Velocity      = 0xD8;
 constexpr uintptr_t CharMove_MovementMode      = 0x241;
 
 // pointers - Source: RSDWSDK/CppSDK/Assertions.inl. These are real pointers,
-constexpr uintptr_t DomPlayerChar_HealthComponent = 0x13F0; // UPlayerHealthComponent*
-constexpr uintptr_t DomPlayerController_SkillComponent = 0x798; // USkillComponent*
-
-// Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp:25533
-constexpr uintptr_t HealthFromAttr_AttributesComponent = 0x188;
+constexpr uintptr_t DomPlayerChar_AttributesComponent = 0x1448; // UDominionAttributesComponent*
+constexpr uintptr_t DomPlayerChar_HealthComponent = 0x1458; // UPlayerHealthComponent*
+constexpr uintptr_t DomPlayerController_SkillComponent = 0x820; // USkillComponent*
 
 // UDominionAttributesComponent - Source: RSDWSDK/CppSDK/Assertions.inl.
 constexpr uintptr_t Attributes_FloatAttributes       = 0xD0;
@@ -141,9 +143,9 @@ constexpr uintptr_t Attributes_SharedAttributeValues = 0x100;
 constexpr uintptr_t FloatAttribute_BaseValue         = 0x38;
 
 // UHealthComponent - Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp
-constexpr uintptr_t Health_MaxHealth           = 0x150;
-constexpr uintptr_t Health_AuthoritativeHealth = 0x154;
-constexpr uintptr_t Health_bCanDie             = 0x158;
+constexpr uintptr_t Health_MaxHealth           = 0x138;
+constexpr uintptr_t Health_AuthoritativeHealth = 0x13C;
+constexpr uintptr_t Health_bCanDie             = 0x140;
 
 // shape - Source: RSDWSDK/CppSDK/SDK/Dominion_classes.hpp
 constexpr uintptr_t SurvivalStat_Current    = 0x130;
@@ -160,7 +162,7 @@ constexpr uintptr_t FSkill_Size      = 0x10;
 constexpr uintptr_t DediSettings_OwnerId         = 0x28;
 constexpr uintptr_t DediSettings_ServerGuid      = 0x68;
 constexpr uintptr_t DediSettings_ServerName      = 0x78;
-constexpr uintptr_t DediSettings_DefaultWorldName = 0xA8;
+constexpr uintptr_t DediSettings_DefaultWorldName = 0x98;
 
 }
 

@@ -20,7 +20,7 @@ struct KickParams {
     uint8_t   Pad[0x7];
 };
 
-// Source: RSDWSDK/CppSDK/SDK/Engine_parameters.hpp:45747
+// Source: RSDWSDK/CppSDK/SDK/Engine_parameters.hpp:45946
 struct ConvStringToTextParams {
     FString InString;            // 0x00
     uint8_t ReturnValue[0x10];   // 0x10, FText
@@ -133,7 +133,7 @@ bool Engine::KickPlayer(const std::string& identifier, const std::string& reason
         if (textFunction && textLibrary && NativeCall::IsNative(textFunction)) {
             ConvStringToTextParams textParams = {};
             WriteFString(textParams.InString, reason);
-            // Source: RSDWSDK/CppSDK/SDK/Engine_parameters.hpp:45751
+            // Source: RSDWSDK/CppSDK/SDK/Engine_parameters.hpp:45950
             if (NativeCall::Invoke(textLibrary, textFunction, &textParams, 0x10)) {
                 memcpy(params.KickReason, textParams.ReturnValue, sizeof(params.KickReason));
                 haveReason = true;

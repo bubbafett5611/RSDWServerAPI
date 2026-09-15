@@ -8,7 +8,9 @@
 #include "../utils/memory.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <sstream>
 #include <vector>
@@ -21,14 +23,19 @@ using namespace DomEngine;
 
 // FChatMessageData - Source: RSDWSDK/CppSDK/Assertions.inl
 constexpr uintptr_t kSenderId      = 0x00;
-constexpr uintptr_t kCharacterGuid = 0x30;
-constexpr uintptr_t kPlayerId      = 0x40;
-constexpr uintptr_t kColor         = 0x44;
-constexpr uintptr_t kMessageBody   = 0x48;
-constexpr size_t    kMessageSize   = 0x58;
+constexpr uintptr_t kSecondaryId   = 0x30;
+constexpr uintptr_t kCharacterGuid = 0x60;
+constexpr uintptr_t kPlayerId      = 0x70;
+constexpr uintptr_t kColor         = 0x74;
+constexpr uintptr_t kMessageBody   = 0x78;
+constexpr size_t    kMessageSize   = 0x88;
+
+// FChatPlayerEventData - Source: RSDWSDK/CppSDK/SDK/JagexChatBackend_structs.hpp
+constexpr uintptr_t kEventTag  = 0x78;
+constexpr size_t    kEventSize = 0x80;
 
 // ADominionPlayerController::PlayerChatComponent - Source: Assertions.inl
-constexpr uintptr_t kControllerChatComponent = 0x11D0;
+constexpr uintptr_t kControllerChatComponent = 0x1288;
 
 typedef void (*ExecThunk)(void* context, void* frame, void* result);
 
@@ -39,11 +46,19 @@ uintptr_t g_SendFunction = 0;
 uintptr_t g_ReceiveFunction = 0;
 uintptr_t g_AdminFunction = 0;
 uintptr_t g_AdminLibrary = 0;
+uintptr_t g_ClientEventFunction = 0;
+uintptr_t g_ServerEventFunction = 0;
+uintptr_t g_SystemMessageFunction = 0;
 bool g_Hooked = false;
 std::string g_Status = "not initialised";
 
 std::mutex g_ListenerMutex;
 std::vector<Listener> g_Listeners;
+std::vector<EventListener> g_EventListeners;
+
+std::mutex g_VTableMutex;
+std::map<uintptr_t, GameThread::ProcessEventFn> g_HookedVTables;
+std::map<std::string, std::chrono::steady_clock::time_point> g_RecentEvents;
 
 void WriteFString(uintptr_t dest, const std::string& value) {
     int32_t count = (int32_t)value.size() + 1;
@@ -70,6 +85,82 @@ void Deliver(const Message& message) {
     }
 }
 
+void DeliverEvent(const PlayerEvent& event) {
+    std::vector<EventListener> listeners;
+    {
+        std::lock_guard<std::mutex> lock(g_ListenerMutex);
+        listeners = g_EventListeners;
+    }
+    for (const EventListener& listener : listeners) {
+        try {
+            listener(event);
+        } catch (...) {
+        }
+    }
+}
+
+void HandlePlayerEvent(uintptr_t params) {
+    Engine* engine = g_Engine;
+    if (!engine || !Mem::Readable((void*)params, kEventSize)) return;
+
+    PlayerEvent event;
+    uint32_t tagIndex = (uint32_t)Mem::ReadI32(params + kEventTag);
+    uint32_t tagNumber = (uint32_t)Mem::ReadI32(params + kEventTag + 4);
+    event.tag = engine->NameToString(tagIndex, tagNumber);
+    if (event.tag.empty() || event.tag == "None") return;
+
+    event.characterGuid = engine->ReadGuid(params + kCharacterGuid);
+    event.playerId = Mem::ReadI32(params + kPlayerId);
+    std::string source;
+    event.senderNetId = engine->ReadUniqueNetId(params + kSenderId, source);
+
+    std::string key = std::to_string(event.playerId) + "|" + event.characterGuid + "|" + event.tag;
+    auto now = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(g_VTableMutex);
+        auto it = g_RecentEvents.find(key);
+        if (it != g_RecentEvents.end() && now - it->second < std::chrono::seconds(3)) return;
+        g_RecentEvents[key] = now;
+        for (auto entry = g_RecentEvents.begin(); entry != g_RecentEvents.end();) {
+            if (now - entry->second > std::chrono::seconds(30)) entry = g_RecentEvents.erase(entry);
+            else ++entry;
+        }
+    }
+
+    for (const PlayerInfo& player : engine->GetAllPlayers()) {
+        if (player.playerId != event.playerId &&
+            (event.characterGuid.empty() || player.characterGuid != event.characterGuid)) continue;
+        event.senderName = player.characterName.empty() ? player.name : player.characterName;
+        if (event.senderNetId.empty()) event.senderNetId = player.uniqueNetId;
+        break;
+    }
+
+    LogMessage("Chat: player event '" + event.tag + "' from " +
+               (event.senderName.empty() ? "playerId " + std::to_string(event.playerId) : event.senderName));
+    DeliverEvent(event);
+}
+
+void HookedChatProcessEvent(void* self, void* function, void* params) {
+    GameThread::ProcessEventFn previous = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_VTableMutex);
+        uintptr_t vtable = Mem::ReadPtr((uintptr_t)self);
+        auto it = g_HookedVTables.find(vtable);
+        if (it != g_HookedVTables.end()) previous = it->second;
+    }
+
+    uintptr_t fn = (uintptr_t)function;
+    if (fn && (fn == g_ClientEventFunction || fn == g_ServerEventFunction)) {
+        HandlePlayerEvent((uintptr_t)params);
+    } else if (fn && fn == g_SystemMessageFunction && g_Engine && Mem::Readable(params, 8)) {
+        uint32_t tagIndex = (uint32_t)Mem::ReadI32((uintptr_t)params);
+        uint32_t tagNumber = (uint32_t)Mem::ReadI32((uintptr_t)params + 4);
+        LogMessage("Chat: system message '" + g_Engine->NameToString(tagIndex, tagNumber) + "'");
+    }
+
+    if (previous) previous(self, function, params);
+}
+
 bool SendToPlayer(const PlayerInfo& player, const std::string& body) {
     if (!g_ReceiveFunction || !GameThread::HasProcessEvent()) return false;
     if (!player.controllerPtr || !player.playerStatePtr) return false;
@@ -83,6 +174,10 @@ bool SendToPlayer(const PlayerInfo& player, const std::string& body) {
     uintptr_t netId = player.playerStatePtr + Offsets::PlayerState_UniqueID;
     if (Mem::Readable((void*)netId, Offsets::NetIdRepl_Size)) {
         memcpy(params + kSenderId, (void*)netId, Offsets::NetIdRepl_Size);
+    }
+    uintptr_t secondary = player.playerStatePtr + Offsets::DomPlayerState_NetIdSecondary;
+    if (Mem::Readable((void*)secondary, Offsets::NetIdRepl_Size)) {
+        memcpy(params + kSecondaryId, (void*)secondary, Offsets::NetIdRepl_Size);
     }
     uintptr_t guid = player.playerStatePtr + Offsets::DomPlayerState_CharacterGuid;
     if (Mem::Readable((void*)guid, 16)) {
@@ -256,6 +351,41 @@ void AddListener(Listener listener) {
     g_Listeners.push_back(listener);
 }
 
+void AddEventListener(EventListener listener) {
+    std::lock_guard<std::mutex> lock(g_ListenerMutex);
+    g_EventListeners.push_back(listener);
+}
+
+void Poll() {
+    Engine* engine = g_Engine;
+    if (!engine || !engine->IsInitialized() || !g_Hooked) return;
+    if (!g_ClientEventFunction && !g_ServerEventFunction && !g_SystemMessageFunction) return;
+    if (GameThread::VTableIndex() < 0) return;
+
+    for (const PlayerInfo& player : engine->GetAllPlayers()) {
+        if (!player.controllerPtr) continue;
+        uintptr_t component = Mem::ReadPtr(player.controllerPtr + kControllerChatComponent);
+        if (!component || !Mem::Readable((void*)component, sizeof(uintptr_t))) continue;
+        uintptr_t vtable = Mem::ReadPtr(component);
+        if (!vtable) continue;
+
+        {
+            std::lock_guard<std::mutex> lock(g_VTableMutex);
+            if (g_HookedVTables.count(vtable)) continue;
+        }
+
+        GameThread::ProcessEventFn previous = nullptr;
+        if (!GameThread::HookVTable(component, &HookedChatProcessEvent, previous)) continue;
+        if (!previous) continue;
+
+        {
+            std::lock_guard<std::mutex> lock(g_VTableMutex);
+            g_HookedVTables[vtable] = previous;
+        }
+        LogMessage("Chat: watching player events on " + engine->GetObjectClassName(component));
+    }
+}
+
 bool Initialize() {
     if (g_Hooked) return true;
 
@@ -269,6 +399,9 @@ bool Initialize() {
     g_ReceiveFunction = engine->FindFunction("PlayerChatComponent", "Client_ReceiveChatMessage");
     g_AdminFunction = engine->FindFunction("PrivilegeFunctionLibrary", "ControllerIsOwnerOrAdmin");
     g_AdminLibrary = engine->FindObject("PrivilegeFunctionLibrary", true);
+    g_ClientEventFunction = engine->FindFunction("PlayerChatComponent", "Client_ReceivePlayerEvent");
+    g_ServerEventFunction = engine->FindFunction("PlayerChatComponent", "Server_SendPlayerEvent");
+    g_SystemMessageFunction = engine->FindFunction("PlayerChatComponent", "Client_ReceiveSystemMessage");
 
     if (!g_SendFunction) {
         g_Status = "Server_SendChatMessage not found";

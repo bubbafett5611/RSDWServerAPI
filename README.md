@@ -1,8 +1,5 @@
 # RSDWServerAPI
 
-> [!CAUTION]  
-> Holding off on updates until patch 1.0 drops. This will determine the path this project takes.
-
 A server management API for **RuneScape: Dragonwilds** dedicated servers on Linux.
 
 It adds a REST API and a Source RCON listener to a running server, so you can see who is
@@ -99,11 +96,12 @@ MaxConnections=16
 [Discord]
 Enabled=false
 WebhookUrl=
+DeathWebhookUrl=
 Username=Dragonwilds
 ```
 
-Set `Enabled=true` and paste a webhook URL to relay in-game chat and player deaths to a
-Discord channel.
+Set `Enabled=true` and paste a webhook URL to relay in-game chat to a Discord channel.
+Player deaths go to `DeathWebhookUrl`, or to `WebhookUrl` when that is left empty.
 
 Bans are kept in `rsdwapi/bans.json` beside the config and survive restarts.
 
@@ -282,8 +280,10 @@ other players.
 
 ## Discord
 
-With `[Discord]` enabled, every chat message is relayed to the webhook as
-`**Name**: message`, and player deaths are posted as `:skull: **Name** died at x, y, z`.
+With `[Discord]` enabled, every chat message is relayed to `WebhookUrl` as
+`**Name**: message`, and player deaths are posted to `DeathWebhookUrl` as
+`:skull: **Name** died at x, y, z`. Leave `DeathWebhookUrl` empty to send both to the same
+channel.
 Messages are batched and sent at most once per second, so a busy server stays inside
 Discord's rate limits.
 

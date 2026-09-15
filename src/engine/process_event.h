@@ -5,6 +5,8 @@
 
 namespace GameThread {
 
+typedef void (*ProcessEventFn)(void* self, void* function, void* params);
+
 bool Initialize(uintptr_t moduleBase, uintptr_t moduleEnd);
 
 bool InstallExecPump();
@@ -26,5 +28,8 @@ const std::string& Status();
 bool RunSync(const std::function<void()>& work, int timeoutMs = 5000);
 
 void CallFunction(uintptr_t object, uintptr_t function, void* params);
+
+int VTableIndex();
+bool HookVTable(uintptr_t object, ProcessEventFn hook, ProcessEventFn& outPrevious);
 
 }

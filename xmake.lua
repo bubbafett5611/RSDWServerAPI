@@ -1,5 +1,5 @@
 set_project("rsdw-serverapi")
-set_version("0.1.2")
+set_version("0.1.4")
 
 add_rules("mode.release")
 set_languages("c++17")

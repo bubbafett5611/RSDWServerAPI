@@ -3,10 +3,12 @@
 
 namespace Discord {
 
-void Start(const std::string& webhookUrl, const std::string& username);
-void Stop();
-bool IsEnabled();
+enum class Channel { Chat, Deaths };
 
-void Post(const std::string& line);
+void Start(Channel channel, const std::string& webhookUrl, const std::string& username);
+void Stop();
+bool IsEnabled(Channel channel);
+
+void Post(Channel channel, const std::string& line);
 
 }

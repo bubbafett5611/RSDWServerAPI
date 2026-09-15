@@ -13,11 +13,13 @@
 #include "utils/logger.h"
 #include "utils/memory.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <chrono>
 #include <cstdio>
 #include <map>
+#include <mutex>
 #include <thread>
 
 APIConfig g_Config;
@@ -125,11 +127,14 @@ void InitThread() {
         DomChat::Initialize();
 
         if (g_Config.discord.enabled) {
-            Discord::Start(g_Config.discord.webhookUrl, g_Config.discord.username);
-            if (Discord::IsEnabled()) {
+            Discord::Start(Discord::Channel::Chat, g_Config.discord.webhookUrl, g_Config.discord.username);
+            std::string deathUrl = g_Config.discord.deathWebhookUrl.empty() ? g_Config.discord.webhookUrl
+                                                                            : g_Config.discord.deathWebhookUrl;
+            Discord::Start(Discord::Channel::Deaths, deathUrl, g_Config.discord.username);
+            if (Discord::IsEnabled(Discord::Channel::Chat)) {
                 DomChat::AddListener([](const DomChat::Message& message) {
                     std::string sender = message.senderName.empty() ? "Unknown" : message.senderName;
-                    Discord::Post("**" + sender + "**: " + message.body);
+                    Discord::Post(Discord::Channel::Chat, "**" + sender + "**: " + message.body);
                 });
             }
         }
@@ -137,6 +142,46 @@ void InitThread() {
         DomBans::Load();
 
         std::map<std::string, bool> wasDead;
+        std::map<std::string, std::chrono::steady_clock::time_point> deathPosted;
+        std::mutex deathMutex;
+
+        auto reportDeath = [&](const std::string& key, const std::string& name, const std::string& where) {
+            auto now = std::chrono::steady_clock::now();
+            {
+                std::lock_guard<std::mutex> lock(deathMutex);
+                auto it = deathPosted.find(key);
+                if (it != deathPosted.end() && now - it->second < std::chrono::seconds(10)) return;
+                deathPosted[key] = now;
+            }
+            LogMessage("Deaths: " + name + " died" + (where.empty() ? "" : " at " + where));
+            if (Discord::IsEnabled(Discord::Channel::Deaths)) {
+                Discord::Post(Discord::Channel::Deaths,
+                              ":skull: **" + name + "** died" + (where.empty() ? "" : " at `" + where + "`"));
+            }
+        };
+
+        DomChat::AddEventListener([&](const DomChat::PlayerEvent& event) {
+            std::string tag = event.tag;
+            std::transform(tag.begin(), tag.end(), tag.begin(),
+                           [](unsigned char c) { return (char)tolower(c); });
+            if (tag.find("death") == std::string::npos && tag.find("died") == std::string::npos &&
+                tag.find("die") == std::string::npos) {
+                return;
+            }
+            std::string name = event.senderName.empty() ? "playerId " + std::to_string(event.playerId)
+                                                        : event.senderName;
+            std::string key = event.senderNetId.empty() ? std::to_string(event.playerId) : event.senderNetId;
+            std::string where;
+            for (const DomEngine::PlayerInfo& player : DomEngine::g_Engine->GetAllPlayers()) {
+                if (player.playerId != event.playerId) continue;
+                if (!player.hasLocation) break;
+                char buffer[96];
+                snprintf(buffer, sizeof(buffer), "%.0f, %.0f, %.0f", player.x, player.y, player.z);
+                where = buffer;
+                break;
+            }
+            reportDeath(key, name, where);
+        });
 
         while (!g_Shutdown) {
             for (int i = 0; i < 20 && !g_Shutdown; i++) {
@@ -146,6 +191,7 @@ void InitThread() {
 
             DomEngine::g_Engine->EnforceKicks();
             DomBans::Enforce();
+            DomChat::Poll();
 
             std::map<std::string, bool> nowDead;
             for (const DomEngine::PlayerInfo& player : DomEngine::g_Engine->GetAllPlayers()) {
@@ -159,10 +205,7 @@ void InitThread() {
                 std::string name = player.characterName.empty() ? player.name : player.characterName;
                 char where[96];
                 snprintf(where, sizeof(where), "%.0f, %.0f, %.0f", player.x, player.y, player.z);
-                LogMessage("Deaths: " + name + " died at " + where);
-                if (Discord::IsEnabled()) {
-                    Discord::Post(":skull: **" + name + "** died at `" + where + "`");
-                }
+                reportDeath(player.uniqueNetId, name, where);
             }
             wasDead.swap(nowDead);
         }
